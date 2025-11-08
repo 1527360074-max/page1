@@ -1,46 +1,57 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>政策咨询Bot
-    <link rel="stylesheet" href="chatbot.css">
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js">
-
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>政策咨询Bot</title>
+    <link rel="stylesheet" href="chatbot.css" />
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
 <body>
     <div class="chat-container">
-        <div class="chat-header">政策咨询助手
-        <div class="chat-messages" id="messages">
+        <div class="chat-header">政策咨询助手</div>
+
+        <div class="chat-messages" id="messages"></div>
+
         <div class="chat-input">
-            <input type="text" id="userInput" placeholder="请输入您的问题...">
-            <button onclick="sendMessage()">发送
-        
-    
+            <input type="text" id="userInput" placeholder="请输入您的问题..." />
+            <button type="button" id="sendBtn">发送</button>
+        </div>
+    </div>
 
     <script>
         // ==== 已填入您的Cloudflare Worker域名 ====
         const API_ENDPOINT = "https://volcano-bot-proxy.1527360074.workers.dev/";
-        // ==========================================
+        // ========================================
 
         const messagesDiv = document.getElementById('messages');
         const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
 
         // 初始化欢迎消息
         addMessage('bot', '您好！我是政策咨询助手，有什么可以帮您？');
 
-        // 添加消息到界面
         function addMessage(role, content) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
             messageDiv.innerHTML = `
-                <div class="message-avatar">${role === 'user' ? '👤' : '🤖'}
-                <div class="message-content">${content}
+                <div class="message-avatar">${role === 'user' ? '👤' : '🤖'}</div>
+                <div class="message-content">${escapeHtml(content)}</div>
             `;
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // 发送消息到API
+        function escapeHtml(str) {
+            if (!str && str !== 0) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         async function sendMessage() {
             const text = userInput.value.trim();
             if (!text) return;
@@ -51,19 +62,24 @@
 
             try {
                 const response = await axios.post(API_ENDPOINT, { message: text });
-                // 移除"正在思考"占位消息
-                messagesDiv.removeChild(messagesDiv.lastChild);
-                // 添加实际回复
-                addMessage('bot', response.data.choices[0].message.content);
+                if (messagesDiv.lastChild && messagesDiv.lastChild.classList.contains('bot')) {
+                    messagesDiv.removeChild(messagesDiv.lastChild);
+                }
+                const reply = (response.data && response.data.choices && response.data.choices[0] && response.data.choices[0].message && response.data.choices[0].message.content) || response.data || '抱歉，未收到有效回复。';
+                addMessage('bot', reply);
             } catch (error) {
-                messagesDiv.removeChild(messagesDiv.lastChild);
+                if (messagesDiv.lastChild && messagesDiv.lastChild.classList.contains('bot')) {
+                    messagesDiv.removeChild(messagesDiv.lastChild);
+                }
                 addMessage('bot', '抱歉，暂时无法获取回复，请稍后再试。');
                 console.error('API请求失败:', error);
             }
         }
 
-        // 回车发送消息
+        sendBtn.addEventListener('click', sendMessage);
         userInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
-    
+    </script>
+</body>
+</html>

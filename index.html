@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>政策咨询 Bot</title>
+  <title>中国医科大学 - 政策咨询 Bot</title>
   <link rel="stylesheet" href="chatbot.css" />
-  <!-- 可选：更好看的中文字体（网络字体，确保能访问） -->
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 </head>
@@ -13,11 +12,26 @@
   <main class="page">
     <section class="chat-container" aria-label="聊天窗口">
       <header class="chat-header">
-        <div>
-          <h1>政策咨询助手</h1>
-          <p class="sub">快速问答 · 同时展示引用条文</p>
+        <div class="brand">
+          <!-- 内嵌简单红色徽章（避免使用官方矢量） -->
+          <div class="cmu-badge" aria-hidden="true">
+            <svg width="44" height="44" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="logo">
+              <defs>
+                <linearGradient id="g" x1="0" x2="1">
+                  <stop offset="0" stop-color="#d93b3b"/>
+                  <stop offset="1" stop-color="#b71b1b"/>
+                </linearGradient>
+              </defs>
+              <circle cx="50" cy="50" r="48" fill="url(#g)"/>
+              <text x="50" y="57" font-size="36" font-family="Noto Sans SC, sans-serif" font-weight="700" fill="#fff" text-anchor="middle">中医大</text>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <h1>中国医科大学 · 政策咨询助手</h1>
+            <p class="sub">快速问答 · 显示引用条文</p>
+          </div>
         </div>
-        <div class="logo">🤖</div>
+        <div class="logo-note">官方信息请以法规原文为准</div>
       </header>
 
       <div class="chat-body">
@@ -25,7 +39,7 @@
       </div>
 
       <form class="chat-input" id="chatForm" onsubmit="return false;">
-        <input id="userInput" type="text" placeholder="请输入您的问题，回车发送..." autocomplete="off" />
+        <input id="userInput" type="text" placeholder="请输入问题（例如：关于医保报销的政策）回车发送..." autocomplete="off" />
         <button id="sendBtn" type="button">发送</button>
       </form>
 
@@ -42,10 +56,8 @@
     const userInput = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
 
-    // 初始化欢迎消息
-    addMessage('bot', '您好！我是政策咨询助手，有什么可以帮您？');
+    addMessage('bot', '您好，我是中国医科大学政策咨询助手。请问有什么我可以帮您解答的政策问题？');
 
-    // 通用转义，防注入
     function escapeHtml(str) {
       if (str === null || str === undefined) return '';
       return String(str)
@@ -56,13 +68,11 @@
         .replace(/'/g, '&#039;');
     }
 
-    // 格式化时间（短）
     function timeNow() {
       const d = new Date();
       return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
     }
 
-    // 添加消息（支持可选 citations 参数：数组，元素{title, text, url}）
     function addMessage(role, content, citations = []) {
       const wrapper = document.createElement('div');
       wrapper.className = `message ${role}`;
@@ -84,7 +94,6 @@
 
       body.appendChild(bubble);
 
-      // 如果有引用条文，添加引用区域
       if (Array.isArray(citations) && citations.length > 0) {
         const citeBox = document.createElement('div');
         citeBox.className = 'citation-box';
@@ -140,71 +149,55 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // 发送消息
     async function sendMessage() {
       const text = userInput.value.trim();
       if (!text) return;
 
-      // 添加用户消息
       addMessage('user', text);
       userInput.value = '';
       userInput.focus();
-
-      // 添加“正在思考...”占位
       addMessage('bot', '正在思考...');
 
       try {
         const response = await axios.post(API_ENDPOINT, { message: text });
 
-        // 移除占位（最后一个 bot 消息）
         if (messagesDiv.lastChild && messagesDiv.lastChild.classList.contains('bot')) {
           messagesDiv.removeChild(messagesDiv.lastChild);
         }
 
-        // 解析回复文本和可能的 citations 字段
         let replyText = '';
         let citations = [];
 
-        // 支持多种后端返回结构
         if (response && response.data) {
-          // 优先查找 structured choices -> message
           if (response.data.choices && response.data.choices[0]) {
             const m = response.data.choices[0].message || {};
             replyText = m.content || response.data.choices[0].text || '';
             if (m.citations) citations = m.citations;
+          } else if (typeof response.data === 'string') {
+            replyText = response.data;
+          } else if (response.data.reply) {
+            replyText = response.data.reply;
+            if (response.data.citations) citations = response.data.citations;
           } else {
-            // 直接按 data 解析
-            if (typeof response.data === 'string') replyText = response.data;
-            else if (response.data.reply) {
-              replyText = response.data.reply;
-              if (response.data.citations) citations = response.data.citations;
-            } else {
-              // fallback: stringify small portion
-              replyText = response.data.content || JSON.stringify(response.data).slice(0, 1000);
-              if (response.data.citations) citations = response.data.citations;
-            }
+            replyText = response.data.content || JSON.stringify(response.data).slice(0, 1000);
+            if (response.data.citations) citations = response.data.citations;
           }
         } else {
           replyText = '抱歉，未收到有效回复。';
         }
 
-        // 如果后端没有 citations，但回复文本内包含特定标记（例如 "【引用】"），尝试简单解析（可选）
         if ((!citations || citations.length === 0) && typeof replyText === 'string') {
-          // 简单示例：若回复中有 "引用条文:" 后跟若干行，用作引用摘要（这里只是尝试提取，格式不固定）
           const marker = '引用条文:';
           if (replyText.includes(marker)) {
             const parts = replyText.split(marker);
             replyText = parts[0].trim();
             const cited = parts[1].trim();
-            if (cited) {
-              citations = [{ title: '引用节选', text: cited }];
-            }
+            if (cited) citations = [{ title: '引用节选', text: cited }];
           }
         }
 
         addMessage('bot', replyText || '（空回复）', citations);
       } catch (err) {
-        // 移除占位
         if (messagesDiv.lastChild && messagesDiv.lastChild.classList.contains('bot')) {
           messagesDiv.removeChild(messagesDiv.lastChild);
         }
@@ -213,7 +206,6 @@
       }
     }
 
-    // 绑定
     sendBtn.addEventListener('click', sendMessage);
     userInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') sendMessage();
@@ -221,3 +213,4 @@
   </script>
 </body>
 </html>
+

@@ -1,85 +1,223 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>政策咨询Bot</title>
-    <link rel="stylesheet" href="chatbot.css" />
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>政策咨询 Bot</title>
+  <link rel="stylesheet" href="chatbot.css" />
+  <!-- 可选：更好看的中文字体（网络字体，确保能访问） -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">政策咨询助手</div>
-
-        <div class="chat-messages" id="messages"></div>
-
-        <div class="chat-input">
-            <input type="text" id="userInput" placeholder="请输入您的问题..." />
-            <button type="button" id="sendBtn">发送</button>
+  <main class="page">
+    <section class="chat-container" aria-label="聊天窗口">
+      <header class="chat-header">
+        <div>
+          <h1>政策咨询助手</h1>
+          <p class="sub">快速问答 · 同时展示引用条文</p>
         </div>
-    </div>
+        <div class="logo">🤖</div>
+      </header>
 
-    <script>
-        // ==== 已填入您的Cloudflare Worker域名 ====
-        const API_ENDPOINT = "https://volcano-bot-proxy.1527360074.workers.dev/";
-        // ========================================
+      <div class="chat-body">
+        <div class="chat-messages" id="messages" role="log" aria-live="polite"></div>
+      </div>
 
-        const messagesDiv = document.getElementById('messages');
-        const userInput = document.getElementById('userInput');
-        const sendBtn = document.getElementById('sendBtn');
+      <form class="chat-input" id="chatForm" onsubmit="return false;">
+        <input id="userInput" type="text" placeholder="请输入您的问题，回车发送..." autocomplete="off" />
+        <button id="sendBtn" type="button">发送</button>
+      </form>
 
-        // 初始化欢迎消息
-        addMessage('bot', '您好！我是政策咨询助手，有什么可以帮您？');
+      <footer class="chat-footer">提示：若 Bot 引用了法规条文，会在回复下方列出“引用条文”。</footer>
+    </section>
+  </main>
 
-        function addMessage(role, content) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}`;
-            messageDiv.innerHTML = `
-                <div class="message-avatar">${role === 'user' ? '👤' : '🤖'}</div>
-                <div class="message-content">${escapeHtml(content)}</div>
-            `;
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
+  <script>
+    // ==== 已填入您的Cloudflare Worker域名 ====
+    const API_ENDPOINT = "https://volcano-bot-proxy.1527360074.workers.dev/";
+    // ========================================
 
-        function escapeHtml(str) {
-            if (!str && str !== 0) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
+    const messagesDiv = document.getElementById('messages');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
 
-        async function sendMessage() {
-            const text = userInput.value.trim();
-            if (!text) return;
+    // 初始化欢迎消息
+    addMessage('bot', '您好！我是政策咨询助手，有什么可以帮您？');
 
-            addMessage('user', text);
-            userInput.value = '';
-            addMessage('bot', '正在思考...');
+    // 通用转义，防注入
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
 
-            try {
-                const response = await axios.post(API_ENDPOINT, { message: text });
-                if (messagesDiv.lastChild && messagesDiv.lastChild.classList.contains('bot')) {
-                    messagesDiv.removeChild(messagesDiv.lastChild);
-                }
-                const reply = (response.data && response.data.choices && response.data.choices[0] && response.data.choices[0].message && response.data.choices[0].message.content) || response.data || '抱歉，未收到有效回复。';
-                addMessage('bot', reply);
-            } catch (error) {
-                if (messagesDiv.lastChild && messagesDiv.lastChild.classList.contains('bot')) {
-                    messagesDiv.removeChild(messagesDiv.lastChild);
-                }
-                addMessage('bot', '抱歉，暂时无法获取回复，请稍后再试。');
-                console.error('API请求失败:', error);
-            }
-        }
+    // 格式化时间（短）
+    function timeNow() {
+      const d = new Date();
+      return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    }
 
-        sendBtn.addEventListener('click', sendMessage);
-        userInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
+    // 添加消息（支持可选 citations 参数：数组，元素{title, text, url}）
+    function addMessage(role, content, citations = []) {
+      const wrapper = document.createElement('div');
+      wrapper.className = `message ${role}`;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'message-avatar';
+      avatar.textContent = role === 'user' ? '👤' : '🤖';
+
+      const body = document.createElement('div');
+      body.className = 'message-body';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'message-content';
+      bubble.innerHTML = escapeHtml(content).replace(/\n/g, '<br>');
+
+      const meta = document.createElement('div');
+      meta.className = 'message-meta';
+      meta.textContent = timeNow();
+
+      body.appendChild(bubble);
+
+      // 如果有引用条文，添加引用区域
+      if (Array.isArray(citations) && citations.length > 0) {
+        const citeBox = document.createElement('div');
+        citeBox.className = 'citation-box';
+
+        const citeTitle = document.createElement('div');
+        citeTitle.className = 'citation-title';
+        citeTitle.textContent = '引用条文';
+
+        citeBox.appendChild(citeTitle);
+
+        citations.forEach((c) => {
+          const item = document.createElement('div');
+          item.className = 'citation-item';
+
+          const t = document.createElement('div');
+          t.className = 'citation-item-title';
+          t.textContent = c.title || '条文';
+
+          const txt = document.createElement('div');
+          txt.className = 'citation-item-text';
+          txt.innerHTML = escapeHtml(c.text || '').replace(/\n/g, '<br>');
+
+          item.appendChild(t);
+          item.appendChild(txt);
+
+          if (c.url) {
+            const a = document.createElement('a');
+            a.className = 'citation-link';
+            a.href = c.url;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = '查看原文';
+            item.appendChild(a);
+          }
+
+          citeBox.appendChild(item);
         });
-    </script>
+
+        body.appendChild(citeBox);
+      }
+
+      body.appendChild(meta);
+
+      if (role === 'user') {
+        wrapper.appendChild(body);
+        wrapper.appendChild(avatar);
+      } else {
+        wrapper.appendChild(avatar);
+        wrapper.appendChild(body);
+      }
+
+      messagesDiv.appendChild(wrapper);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // 发送消息
+    async function sendMessage() {
+      const text = userInput.value.trim();
+      if (!text) return;
+
+      // 添加用户消息
+      addMessage('user', text);
+      userInput.value = '';
+      userInput.focus();
+
+      // 添加“正在思考...”占位
+      addMessage('bot', '正在思考...');
+
+      try {
+        const response = await axios.post(API_ENDPOINT, { message: text });
+
+        // 移除占位（最后一个 bot 消息）
+        if (messagesDiv.lastChild && messagesDiv.lastChild.classList.contains('bot')) {
+          messagesDiv.removeChild(messagesDiv.lastChild);
+        }
+
+        // 解析回复文本和可能的 citations 字段
+        let replyText = '';
+        let citations = [];
+
+        // 支持多种后端返回结构
+        if (response && response.data) {
+          // 优先查找 structured choices -> message
+          if (response.data.choices && response.data.choices[0]) {
+            const m = response.data.choices[0].message || {};
+            replyText = m.content || response.data.choices[0].text || '';
+            if (m.citations) citations = m.citations;
+          } else {
+            // 直接按 data 解析
+            if (typeof response.data === 'string') replyText = response.data;
+            else if (response.data.reply) {
+              replyText = response.data.reply;
+              if (response.data.citations) citations = response.data.citations;
+            } else {
+              // fallback: stringify small portion
+              replyText = response.data.content || JSON.stringify(response.data).slice(0, 1000);
+              if (response.data.citations) citations = response.data.citations;
+            }
+          }
+        } else {
+          replyText = '抱歉，未收到有效回复。';
+        }
+
+        // 如果后端没有 citations，但回复文本内包含特定标记（例如 "【引用】"），尝试简单解析（可选）
+        if ((!citations || citations.length === 0) && typeof replyText === 'string') {
+          // 简单示例：若回复中有 "引用条文:" 后跟若干行，用作引用摘要（这里只是尝试提取，格式不固定）
+          const marker = '引用条文:';
+          if (replyText.includes(marker)) {
+            const parts = replyText.split(marker);
+            replyText = parts[0].trim();
+            const cited = parts[1].trim();
+            if (cited) {
+              citations = [{ title: '引用节选', text: cited }];
+            }
+          }
+        }
+
+        addMessage('bot', replyText || '（空回复）', citations);
+      } catch (err) {
+        // 移除占位
+        if (messagesDiv.lastChild && messagesDiv.lastChild.classList.contains('bot')) {
+          messagesDiv.removeChild(messagesDiv.lastChild);
+        }
+        addMessage('bot', '抱歉，网络或后端错误，无法获取回复。');
+        console.error('API请求失败:', err);
+      }
+    }
+
+    // 绑定
+    sendBtn.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+  </script>
 </body>
 </html>
